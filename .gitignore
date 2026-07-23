@@ -1,0 +1,11 @@
+synthea_output/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+.env
+*.db
+*.sqlite
+*.log
+node_modules/
+.mcp.json

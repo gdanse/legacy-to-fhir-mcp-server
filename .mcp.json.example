@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "legacy-to-fhir": {
+      "command": "<path-to-this-repo>/.venv/bin/python3",
+      "args": [
+        "<path-to-this-repo>/mcp_server/server.py"
+      ]
+    }
+  }
+}
