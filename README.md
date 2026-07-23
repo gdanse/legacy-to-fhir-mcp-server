@@ -11,12 +11,25 @@ Mock/synthetic data only — no real PHI. Read-only by design, no write path.
 ## Overview
 
 Legacy healthcare systems store patient data in fragmented, non-standardized
-formats that predate modern interoperability standards like FHIR. This
-project simulates that problem end-to-end: a synthetic legacy database with
+formats that predate modern interoperability standards like FHIR. Hospitals
+and payers still run production systems on these decades-old schemas, and
+migrating them wholesale is slow, expensive, and high-risk — which is why
+healthcare interoperability/translation layers exist commercially as a
+practical middle ground: leave the legacy system in place, expose it
+through a standards-conformant interface instead of a full rewrite. Every AI agent or
+modern tool that wants to *use* this data safely needs exactly that kind of
+translation layer in front of it — natural-language querying without one
+means an LLM either can't reach the data at all, or reaches it by writing
+raw SQL against an undocumented, inconsistent schema, with no guarantee the
+result is even valid healthcare data.
+
+This project builds a working (if intentionally small-scale) version of
+that translation layer end-to-end: a synthetic legacy database with
 realistic messiness (inconsistent date formats, demographic data split
 across unlinked tables, units embedded in free-text values, un-coded
-diagnosis notes), and a translation layer that maps it cleanly into FHIR —
-never silently guessing when a mapping is ambiguous.
+diagnosis notes), and an MCP server that maps it cleanly into FHIR —
+never silently guessing when a mapping is ambiguous, and never returning
+a resource that hasn't independently passed schema validation.
 
 ## Features
 
@@ -35,38 +48,62 @@ never silently guessing when a mapping is ambiguous.
 
 ## Architecture
 
-```
-Natural-language query
-        │
-        ▼
-  MCP server (mcp_server/server.py)
-        │  picks one of two narrowly-scoped tools
-        ▼
-  query_legacy_patient_records          translate_vitals_log
-  (Patient + Condition)                 (Observation)
-        │                                       │
-        ▼                                       ▼
-     legacy_repo.py — resolves the query against the mock legacy
-                       SQLite database (data/legacy.db)
-        │
-        ▼
-     fhir_build.py — maps raw legacy fields to FHIR elements,
-                      resolving codes via codes.py (LOINC/SNOMED-CT)
-                      and dates via datetimes.py
-        │
-        ▼
-     validation.py — independent FHIR R4B schema check; anything
-                      that fails is excluded and reported in
-                      `validation_failures`, never returned as valid
-        │
-        ▼
-   Validated FHIR Bundle returned to the caller
+```mermaid
+flowchart TD
+    Q["Natural-language query"] --> S["MCP server\nmcp_server/server.py"]
+    S -->|"patient / condition query"| T1["query_legacy_patient_records\n(Patient + Condition)"]
+    S -->|"vitals / labs query"| T2["translate_vitals_log\n(Observation)"]
+
+    T1 --> R["legacy_repo.py\nresolves query against mock legacy\nSQLite database (data/legacy.db)"]
+    T2 --> R
+
+    R --> B["fhir_build.py\nmaps raw legacy fields to FHIR elements\nvia codes.py (LOINC/SNOMED-CT) + datetimes.py"]
+    B --> V{"validation.py\nindependent FHIR R4B\nschema check"}
+
+    V -->|"pass"| OK["Validated FHIR Bundle\nreturned to caller"]
+    V -->|"fail"| BAD["Excluded from bundle,\nreported in validation_failures"]
 ```
 
 The mock legacy data itself comes from [Synthea](https://github.com/synthetichealth/synthea)
 (MITRE's open-source synthetic patient generator), then deliberately degraded
 by `legacy_data/mangle.py` into a fragmented, legacy-system-shaped schema —
 see [Legacy data design](#legacy-data-design) below.
+
+## Technical specification
+
+### Schema validation
+
+Every FHIR resource this server returns is a **pydantic model, not a plain
+dict** — `fhir.resources` (the FHIR model library used here) is built on
+[`fhir_core`](https://pypi.org/project/fhir-core/), which is itself built on
+[pydantic](https://docs.pydantic.dev/) v2. Concretely:
+
+```python
+>>> from fhir.resources.R4B.patient import Patient
+>>> import pydantic
+>>> issubclass(Patient, pydantic.BaseModel)
+True
+```
+
+`mcp_server/validation.py` instantiates the matching pydantic model
+(`Patient`, `Observation`, or `Condition`) for every resource `fhir_build.py`
+produces, **as an independent step that doesn't trust the mapping code that
+built the resource**. Pydantic's own validation raises on missing required
+fields, wrong types, or malformed structure — the exact same enforcement
+mechanism a hand-written Zod schema would provide in a TypeScript service,
+applied here to the FHIR R4B spec. A resource that fails is excluded from
+the bundle and reported in `validation_failures`; there is no code path
+that returns a resource without going through this check.
+
+### Security boundaries
+
+| Boundary | How it's enforced |
+|---|---|
+| Read-only data access | The SQLite connection is opened in `mode=ro` (`legacy_repo.py`) — no write path exists even at the driver level, independent of any application-level checks |
+| No secrets / API keys | Nothing in the codebase reads `os.environ` or any credential store; no external service is called at runtime (see [Configuration](#configuration)) |
+| No real PHI | All patient data is synthetic, generated by Synthea — every SSN carries Synthea's `999-`-prefix synthetic-data marker, and no real patient data is ingested anywhere in the pipeline |
+| Local-only execution | The MCP server communicates over stdio only; it does not open a network port or accept remote connections |
+| Untrusted-input handling | Every ambiguous or unparseable legacy value is flagged and excluded rather than guessed — see [Validation & fallback philosophy](#validation--fallback-philosophy) |
 
 ## Prerequisites
 
@@ -77,12 +114,28 @@ see [Legacy data design](#legacy-data-design) below.
 
 ## Installation
 
+Three steps — clone, install, verify. Dependency versions are pinned
+(`pyproject.toml`) to a combination that's actually tested working; an
+unpinned `fhir.resources` install can pull in an incompatible
+`annotated-types` release and fail with an `ImportError`, so match these
+versions rather than installing latest:
+
 ```bash
-git clone <this-repo-url>
-cd "Legacy-to-FHIR Mapping MCP Server"
+# 1. Clone
+git clone https://github.com/gdanse/legacy-to-fhir-mcp-server.git
+cd legacy-to-fhir-mcp-server
+
+# 2. Install (pinned versions -- see pyproject.toml)
 python3 -m venv .venv && source .venv/bin/activate
-pip install mcp fhir.resources
+pip install "mcp==1.28.1" "fhir.resources==8.3.0" "annotated-types<0.8.0"
+
+# 3. Verify
+python3 scripts/test_query_legacy_patient_records.py
 ```
+
+All three steps together run in well under two minutes on a normal
+connection — the mock database (`data/legacy.db`) is already checked in,
+so there's no seeding step.
 
 ## Usage
 

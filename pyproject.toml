@@ -3,6 +3,10 @@ name = "legacy-to-fhir-mcp-server"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.28",
-    "fhir.resources>=8.3",
+    "mcp==1.28.1",
+    "fhir.resources==8.3.0",
+    # Pinned explicitly: fhir_core 1.1.9 (pulled in by fhir.resources) imports
+    # `SLOTS` from annotated_types, which annotated-types>=0.8.0 removed --
+    # an unpinned install breaks with ImportError on a clean environment.
+    "annotated-types<0.8.0",
 ]
