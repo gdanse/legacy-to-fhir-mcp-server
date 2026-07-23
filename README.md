@@ -92,9 +92,15 @@ Start the server (stdio transport):
 python3 mcp_server/server.py
 ```
 
-To use it from Claude Code, copy `.mcp.json.example` to `.mcp.json` and
-replace `<path-to-this-repo>` with your local checkout path (`.mcp.json` is
-gitignored since that path is machine-specific):
+Claude Code isn't required — the server speaks the standard Model Context
+Protocol over stdio, so anything that can act as an MCP client can use it.
+A few ways to actually make queries:
+
+### Via Claude Code (or any MCP client)
+
+Copy `.mcp.json.example` to `.mcp.json` and replace `<path-to-this-repo>`
+with your local checkout path (`.mcp.json` is gitignored since that path is
+machine-specific):
 
 ```bash
 cp .mcp.json.example .mcp.json
@@ -118,6 +124,32 @@ Both tools accept a name, a legacy MRN, or both, and return:
   "validation_failures": ["<resources excluded for failing schema validation>"]
 }
 ```
+
+Any other MCP client works the same way — e.g. the standalone
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector), a
+browser-based dev tool for exercising an MCP server without wiring it into
+an AI assistant at all:
+
+```bash
+npx @modelcontextprotocol/inspector python3 mcp_server/server.py
+```
+
+### Without any MCP client — direct Python calls
+
+Natural-language tool *selection* is what an MCP client provides. The data
+retrieval, FHIR mapping, and validation underneath don't depend on it — the
+tool functions are plain Python and can be called directly with a query
+string, no AI involved:
+
+```python
+from mcp_server.server import query_legacy_patient_records, translate_vitals_log
+
+query_legacy_patient_records("Ben Torp")
+translate_vitals_log("Adelle Raynor's weight")
+```
+
+This is exactly what the smoke tests in `scripts/` do — see
+[Testing](#testing) below.
 
 ## Configuration
 
