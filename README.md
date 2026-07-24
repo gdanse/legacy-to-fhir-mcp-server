@@ -1,5 +1,12 @@
 # Legacy-to-FHIR Mapping MCP Server
 
+![Demo: querying the legacy database in natural language and getting back validated FHIR](docs/demo.gif)
+
+*Demo caption: a simplified local REPL (`scripts/demo.py`) that calls the
+tool functions directly, with a keyword-based stand-in for tool selection —
+the real natural-language routing is AI-driven via an MCP client like
+Claude Code, documented in [Usage](#usage) below.*
+
 A Model Context Protocol (MCP) server that sits on top of a mock legacy
 healthcare database and exposes read-only tools that map fragmented,
 inconsistently-formatted records into valid, schema-conformant FHIR
@@ -224,6 +231,10 @@ python3 scripts/test_validation_layer.py
 `scripts/verify_legacy_mess.py` prints direct SQL evidence of each legacy
 mess pattern described below, straight from `data/legacy.db`.
 
+`scripts/demo.py` is an interactive REPL for trying queries yourself
+without any MCP client (this is what the demo GIF above was recorded
+from) — run it and type a natural-language query at the `query>` prompt.
+
 ## Project structure
 
 ```
@@ -241,6 +252,8 @@ legacy_data/          builds the mock legacy database from Synthea output
 mapping/
   fhir-mapping-schema.md  field-by-field mapping spec + verified code tables
 scripts/               smoke tests + database build/verification scripts
+  demo.py                interactive REPL for trying queries (used for the demo GIF)
+docs/demo.gif          the README demo recording
 data/legacy.db         the mock legacy database (checked in, regeneratable)
 ```
 
