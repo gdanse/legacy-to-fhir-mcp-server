@@ -2,18 +2,15 @@
 
 ![Demo: querying the legacy database in natural language and getting back validated FHIR](docs/demo.gif)
 
-*Demo caption: a simplified local REPL (`scripts/demo.py`) that calls the
+<i>Note: For this demo, a simplified local REPL (`scripts/demo.py`) that calls the
 tool functions directly, with a keyword-based stand-in for tool selection —
-the real natural-language routing is AI-driven via an MCP client like
-Claude Code, documented in [Usage](#usage) below.*
+the real natural-language routing is AI-driven via an MCP client, documented in [Usage](#usage) below.</i>
 
 A Model Context Protocol (MCP) server that sits on top of a mock legacy
 healthcare database and exposes read-only tools that map fragmented,
 inconsistently-formatted records into valid, schema-conformant FHIR
 resources (`Patient`, `Observation`, `Condition`) — queryable by an AI agent
-using natural language instead of hand-written SQL.
-
-Mock/synthetic data only — no real PHI. Read-only by design, no write path.
+using natural language instead of hand-written SQL. Mock/synthetic data only — no real PHI. Read-only by design, no write path.
 
 ## Overview
 
